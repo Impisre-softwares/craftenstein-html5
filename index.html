@@ -5,6 +5,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
+
+<!-- === PWA: meta === -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#228B22">
+<meta name="description" content="Craftenstein 3D — HTML5 FPS">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Craftenstein">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="msapplication-TileColor" content="#228B22">
+<meta name="msapplication-TileImage" content="icons/icon-192.png">
+<!-- === /PWA meta === -->
+
 <title>Craftenstein 3D — HTML5</title>
 <style>
 * { margin:0; padding:0; box-sizing:border-box; overflow:hidden;
@@ -29,6 +41,16 @@ html, body { width:100%; height:100%; background:#000;
     color:#fff; font:bold 20px 'Courier New',monospace;
     z-index:50; cursor:pointer; }
 #btnFs:active { background:rgba(0,255,0,0.9); }
+
+/* === PWA: install button === */
+#btnInstall { position:fixed; top:10px; right:62px;
+    width:44px; height:44px; background:rgba(0,120,255,0.5);
+    border:2px solid #00A0FF; border-radius:8px;
+    color:#fff; font:bold 20px 'Courier New',monospace;
+    z-index:50; cursor:pointer; display:none; }
+#btnInstall:active { background:rgba(0,160,255,0.9); }
+/* === /PWA install button === */
+
 #dpad { position:fixed; bottom:20px; left:20px; display:none; z-index:50; }
 #dpad .row { display:flex; gap:6px; justify-content:center; margin-bottom:6px; }
 #dpad button { width:60px; height:60px;
@@ -61,6 +83,7 @@ html, body { width:100%; height:100%; background:#000;
 </div>
 
 <button id="btnFs">⛶</button>
+<button id="btnInstall">⤓</button>
 <button id="start">▶ START</button>
 
 <div id="dpad">
@@ -129,6 +152,11 @@ fixCanvasSize();
 window.addEventListener('resize', fixCanvasSize);
 window.addEventListener('orientationchange', function(){ setTimeout(fixCanvasSize, 200); });
 
+// === PWA: visualViewport (standalone / iOS notch) ===
+if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', fixCanvasSize);
+}
+
 // ================================================================
 // ИГРОВОЕ СОСТОЯНИЕ
 // ================================================================
@@ -146,6 +174,13 @@ var attackFrame = 0;
 var gameMode = 0; // 0 = Survival, 1 = Creative
 var selectedBlockType = 1;
 var inventory = [0, 5, 5, 5];
+
+// === PWA: режим запуска из shortcuts (?mode=creative|survival) ===
+(function applyLaunchMode() {
+    var params = new URLSearchParams(location.search);
+    if (params.get('mode') === 'creative') gameMode = 1;
+    else if (params.get('mode') === 'survival') gameMode = 0;
+})();
 
 // ================================================================
 // КАРТА (32×14)
@@ -414,17 +449,8 @@ function spawnMobInFront() {
 // РЕНДЕР
 // ================================================================
 function renderRaycast() {
-    // Небо и пол
-    var sky = 0xFF7FBF7F | 0xFF000000; // RGB(127,191,255) BGRA
-    var skyBGR = 0xFF00BF7F | 0xFF000000; // пересчитываем
-    // Правильно: ABGR = 0xAABBGGRR
-    // RGB(127,191,255) = 0xFFBFFF7F (ABGR)
-    sky = 0xFFBFFF7F | 0; // A=FF, B=FF, G=BF, R=7F
-    var floorColor = 0xFF467A55 | 0; // RGB(85,122,70) = BGR(70,122,85)
-    // floor: A=FF, B=46, G=7A, R=55
-
-    var skyC = (0xFF << 24) | (255 << 16) | (191 << 8) | 127;   // ABGR: B=255, G=191, R=127
-    var floorC = (0xFF << 24) | (70 << 16) | (122 << 8) | 85;   // ABGR: B=70, G=122, R=85
+    var skyC = (0xFF << 24) | (255 << 16) | (191 << 8) | 127;
+    var floorC = (0xFF << 24) | (70 << 16) | (122 << 8) | 85;
 
     for (var i = 0; i < pixels.length; i++) {
         pixels[i] = (i < pixels.length / 2) ? skyC : floorC;
@@ -464,7 +490,6 @@ function renderRaycast() {
         if (drawStart < 0) drawStart = 0;
         if (drawEnd >= SH) drawEnd = SH - 1;
 
-        // Координата X текстуры
         var cellX = curX >> FP_SHIFT;
         var cellY = curY >> FP_SHIFT;
         var fracX = curX - (cellX << FP_SHIFT);
@@ -472,7 +497,6 @@ function renderRaycast() {
         var wallHit = (fracX < fracY) ? fracX : fracY;
         var texX = Math.floor((wallHit * WTS) / FP_ONE) & (WTS - 1);
 
-        // Выбор текстуры
         var img = tex.cobblestone;
         if (hitWall === 2) img = tex.dirt;
         else if (hitWall === 3) img = tex.planks;
@@ -487,9 +511,8 @@ function renderRaycast() {
             texPos += texStep;
             var col;
             if (img) col = getPix(img, texX, texY);
-            else col = 0xFF808080 | 0; // серый fallback
+            else col = 0xFF808080 | 0;
             if (col === 0) col = 0xFF808080 | 0;
-            // Прозрачность — fallback
             if (((col >> 24) & 0xFF) < 128) col = 0xFF808080 | 0;
             if (dark) {
                 var r = (col >> 16) & 0xFF, g = (col >> 8) & 0xFF, b = col & 0xFF;
@@ -501,7 +524,6 @@ function renderRaycast() {
 }
 
 function renderSprites() {
-    var maxCount = mobs.length + items.length;
     var arr = [];
     for (var i = 0; i < mobs.length; i++) {
         var mob = mobs[i];
@@ -558,7 +580,7 @@ function renderSprites() {
                     var a = (col >> 24) & 0xFF;
                     if (a > 128) {
                         if (!s.IsItem && isAttacking && attackFrame < 2 && transformY < FP_ONE * 2) {
-                            col = 0xFFFF0000 | 0; // красная вспышка
+                            col = 0xFFFF0000 | 0;
                         } else if (dark) {
                             var r = (col >> 16) & 0xFF, g = (col >> 8) & 0xFF, b = col & 0xFF;
                             col = (0xFF << 24) | ((r >> 1) << 16) | ((g >> 1) << 8) | (b >> 1);
@@ -572,12 +594,10 @@ function renderSprites() {
 }
 
 function renderWeapon() {
-    // Прицел
     var centerX = Math.floor(SW / 2);
     var centerY = Math.floor(SH / 2);
     pixels[centerX + centerY * SW] = 0xFFFFFFFF | 0;
 
-    // Меч
     var img = tex.sword;
     var swordSize = 72;
     var weaponStartX = SW - swordSize + 5 - (isAttacking ? (attackFrame * 10) : 0);
@@ -599,7 +619,6 @@ function renderWeapon() {
         }
     }
 
-    // Сердца
     if (gameMode === 0) {
         var heartImg = tex.heart;
         var heartSize = 12;
@@ -629,7 +648,6 @@ function renderWeapon() {
 // HUD (текст)
 // ================================================================
 function drawHUD() {
-    // Наносим на canvas поверх bb
     ctx.drawImage(bb, 0, 0, WW, WH);
 
     ctx.font = 'bold 14px "Courier New"';
@@ -810,6 +828,58 @@ Promise.all([
         if (bgMusic) { bgMusic.play().catch(function(){}); }
         loop();
     });
+});
+
+// ================================================================
+// === PWA: SERVICE WORKER + INSTALL PROMPT ===
+// ================================================================
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function() {
+        navigator.serviceWorker.register('service-worker.js')
+            .then(function(reg) {
+                // Автообновление при выходе новой версии
+                reg.addEventListener('updatefound', function() {
+                    var nw = reg.installing;
+                    if (!nw) return;
+                    nw.addEventListener('statechange', function() {
+                        if (nw.state === 'installed' && navigator.serviceWorker.controller) {
+                            if (confirm('Доступна новая версия. Обновить?')) {
+                                nw.postMessage({ type: 'SKIP_WAITING' });
+                                location.reload();
+                            }
+                        }
+                    });
+                });
+            })
+            .catch(function(err){ console.warn('SW register failed:', err); });
+    });
+}
+
+var deferredPrompt = null;
+var installBtn = document.getElementById('btnInstall');
+
+window.addEventListener('beforeinstallprompt', function(e) {
+    e.preventDefault();
+    deferredPrompt = e;
+    if (installBtn) installBtn.style.display = 'block';
+});
+
+if (installBtn) {
+    installBtn.addEventListener('click', function() {
+        if (!deferredPrompt) return;
+        deferredPrompt.prompt();
+        deferredPrompt.userChoice.then(function(choice) {
+            if (choice.outcome === 'accepted') {
+                installBtn.style.display = 'none';
+            }
+            deferredPrompt = null;
+        });
+    });
+}
+
+window.addEventListener('appinstalled', function() {
+    if (installBtn) installBtn.style.display = 'none';
+    deferredPrompt = null;
 });
 
 })();
